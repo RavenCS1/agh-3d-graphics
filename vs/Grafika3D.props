@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Grafika3D.props - arkusz wlasciwosci dla projektow Visual Studio z laboratoriow Grafiki 3D
+  (SFML 2.5.1 z NuGeta + klasyczny OpenGL/GLU). Dodaj go raz do kazdego nowego projektu.
+
+  Co ustawia (dla kazdej konfiguracji, do ktorej zostanie dodany):
+    - Linker -> Input: opengl32.lib; glu32.lib
+    - biblioteki SFML system/window/graphics brane wprost z folderu "packages" NuGeta
+      (sfml-xxx-d.lib w Debug, sfml-xxx.lib w Release, tylko x64)
+    - kopiuje pasujace DLL-e SFML (sfml-xxx[-d]-2.dll) obok .exe po kazdej kompilacji
+    - C/C++ -> Precompiled Headers: Not Using Precompiled Headers
+    - C/C++ -> Language: C++17
+    - C/C++ -> Command Line: /utf-8 (polskie znaki w L"..." i napisach HUD)
+    - C/C++ -> Preprocessor: NOMINMAX (windows.h z SFML/OpenGL.hpp nie psuje std::min/max)
+    - Linker -> System -> SubSystem: Console
+    - Debugging -> Working Directory: $(ProjectDir) (sciezki assets/... i shaders/...)
+    - ostrzezenia przy kompilacji, gdy platforma nie jest x64 albo brakuje SFML
+
+  Dlaczego SFML jest linkowany recznie: paczki sfml_* 2.5.1 z NuGeta dodaja naglowki dla kazdego
+  kompilatora, ale pliki .lib tylko dla starszych toolsetow (do VS 2017). W nowszym Visual Studio
+  kod sie kompiluje, a linker zglasza LNK2019 "unresolved external symbol sf::...".
+  Podwojne podlinkowanie tej samej biblioteki importu jest nieszkodliwe.
+
+  SFML trzeba nadal zainstalowac z NuGeta (Package Manager Console):
+      Install-Package sfml_graphics -Version 2.5.1
+
+  Jak dodac:
+    1. Skopiuj ten plik obok pliku .vcxproj.
+    2. View -> Other Windows -> Property Manager.
+    3. Prawy klik na projekt -> Add Existing Property Sheet... -> wybierz ten plik.
+
+  Uwaga: wartosc ustawiona bezposrednio w projekcie (pogrubiona w Project Properties) wygrywa
+  z arkuszem. Jesli cos nie dziala, wybierz w tym polu <inherit from parent or project defaults>.
+-->
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+
+  <PropertyGroup>
+    <_PropertySheetDisplayName>Grafika3D (SFML 2.5.1 + OpenGL)</_PropertySheetDisplayName>
+    <LocalDebuggerWorkingDirectory>$(ProjectDir)</LocalDebuggerWorkingDirectory>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>NOMINMAX;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- ===================== Folder "packages" NuGeta ===================== -->
+  <PropertyGroup>
+    <G3dPackagesDir Condition="'$(G3dPackagesDir)' == '' And '$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*' And Exists('$(SolutionDir)packages')">$(SolutionDir)packages\</G3dPackagesDir>
+    <G3dPackagesDir Condition="'$(G3dPackagesDir)' == '' And Exists('$(MSBuildProjectDirectory)\..\packages')">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\packages'))\</G3dPackagesDir>
+    <G3dPackagesDir Condition="'$(G3dPackagesDir)' == '' And Exists('$(MSBuildProjectDirectory)\packages')">$(MSBuildProjectDirectory)\packages\</G3dPackagesDir>
+
+    <!-- przyrostek "-d" dla bibliotek Debug -->
+    <_G3dD></_G3dD>
+    <_G3dD Condition="'$(UseDebugLibraries)' == 'true' Or '$(Configuration)' == 'Debug'">-d</_G3dD>
+
+    <!-- pomijamy 32 bity i toolsety sprzed VS 2015 (niezgodne binarnie z obecnym MSVC) -->
+    <_G3dExclude>$(G3dPackagesDir)**\x86\**;$(G3dPackagesDir)**\Win32\**;$(G3dPackagesDir)**\v100\**;$(G3dPackagesDir)**\v110\**;$(G3dPackagesDir)**\v120\**;$(G3dPackagesDir)**\vc10\**;$(G3dPackagesDir)**\vc11\**;$(G3dPackagesDir)**\vc12\**</_G3dExclude>
+  </PropertyGroup>
+
+  <!-- ===================== Biblioteki i DLL-e SFML (x64) ===================== -->
+  <ItemGroup Condition="'$(G3dPackagesDir)' != '' And '$(Platform)' == 'x64'">
+    <Library Include="$(G3dPackagesDir)sfml_graphics.*\**\sfml-graphics$(_G3dD).lib;$(G3dPackagesDir)sfml_window.*\**\sfml-window$(_G3dD).lib;$(G3dPackagesDir)sfml_system.*\**\sfml-system$(_G3dD).lib"
+             Exclude="$(_G3dExclude)" />
+    <_G3dSfmlDll Include="$(G3dPackagesDir)sfml_graphics*\**\sfml-graphics$(_G3dD)-2.dll;$(G3dPackagesDir)sfml_window*\**\sfml-window$(_G3dD)-2.dll;$(G3dPackagesDir)sfml_system*\**\sfml-system$(_G3dD)-2.dll"
+                 Exclude="$(_G3dExclude)" />
+  </ItemGroup>
+
+  <Target Name="G3dCopySfmlDlls" AfterTargets="Build" Condition="'@(_G3dSfmlDll)' != ''">
+    <Copy SourceFiles="@(_G3dSfmlDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- ===================== Kontrola konfiguracji (tylko ostrzezenia) ===================== -->
+  <PropertyGroup>
+    <_G3dPackagesConfig>$(MSBuildProjectDirectory)\packages.config</_G3dPackagesConfig>
+    <_G3dSfmlInstalled>false</_G3dSfmlInstalled>
+    <_G3dSfmlInstalled Condition="Exists('$(_G3dPackagesConfig)')">$([System.IO.File]::ReadAllText('$(_G3dPackagesConfig)').Contains('sfml_graphics'))</_G3dSfmlInstalled>
+  </PropertyGroup>
+
+  <Target Name="G3dSanityChecks" BeforeTargets="PrepareForBuild">
+    <Warning Condition="'$(Platform)' != 'x64'"
+             Text="Grafika3D: laby wymagaja platformy x64, a wybrana jest '$(Platform)'. Zmien ja na pasku narzedzi (Solution Platforms -> x64)." />
+    <Warning Condition="'$(_G3dSfmlInstalled)' != 'true'"
+             Text="Grafika3D: brak SFML w packages.config. Zainstaluj: Tools -> NuGet Package Manager -> Package Manager Console:  Install-Package sfml_graphics -Version 2.5.1" />
+    <Warning Condition="'$(_G3dSfmlInstalled)' == 'true' And '$(Platform)' == 'x64' And '@(Library)' == ''"
+             Text="Grafika3D: nie znaleziono sfml-graphics$(_G3dD).lib w folderze packages. Prawy klik na solucje -> Restore NuGet Packages, potem Rebuild." />
+    <Message Importance="high" Condition="'@(Library)' != ''" Text="Grafika3D: SFML linkowany z: @(Library->'%(FullPath)', ' | ')" />
+  </Target>
+</Project>
